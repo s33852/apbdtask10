@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "Guz+rU25Jm4=",
+  "success": true,
+  "projectFilePath": "/Users/juliadomanska/studia/apbd/task10/StudentPanel/StudentPanel.csproj",
+  "expectedPackageFiles": [
+    "/Users/juliadomanska/.nuget/packages/microsoft.aspnetcore.app.internal.assets/10.0.5/microsoft.aspnetcore.app.internal.assets.10.0.5.nupkg.sha512"
+  ],
+  "logs": []
+}

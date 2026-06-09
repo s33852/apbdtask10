@@ -1,0 +1,81 @@
+@page "/students"
+@rendermode InteractiveServer
+@inject StudentsApiClient Api
+@inject ObservedStudentsState ObservedState
+@inject NavigationManager Nav
+
+<PageTitle>Students</PageTitle>
+
+<h1 class="mb-4">Students</h1>
+
+<div class="mb-3">
+    <a href="students/create" class="btn btn-primary">
+        <i class="bi bi-person-plus me-1"></i>Add New Student
+    </a>
+</div>
+
+<LoadingPanel IsLoading="@_loading" Message="Loading students..." />
+<ApiError Message="@_error" ShowRetryButton="true" OnRetry="LoadStudents" />
+
+@if (!_loading && _error is null)
+{
+    <ErrorBoundary>
+        <ChildContent>
+            <DataTable TItem="StudentDto" Items="_students"
+                       EmptyMessage="No students found.">
+                <HeaderTemplate>
+                    <th>Index</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Semester</th>
+                    <th>Actions</th>
+                </HeaderTemplate>
+                <RowTemplate Context="student">
+                    <td>@student.IndexNumber</td>
+                    <td>@student.FullName</td>
+                    <td>@student.Email</td>
+                    <td>Semester @student.Semester</td>
+                    <td>
+                        <a href="students/@student.Id" class="btn btn-sm btn-outline-primary me-1">Details</a>
+                        <button class="btn btn-sm @(ObservedState.IsObserved(student.Id) ? "btn-warning" : "btn-outline-secondary")"
+                                @onclick="() => ObservedState.Toggle(student)">
+                            @(ObservedState.IsObserved(student.Id) ? "Unobserve" : "Observe")
+                        </button>
+                    </td>
+                </RowTemplate>
+            </DataTable>
+        </ChildContent>
+        <ErrorContent Context="ex">
+            <ApiError Message="@($"An unexpected error occurred while rendering the student list: {ex.Message}")" />
+        </ErrorContent>
+    </ErrorBoundary>
+}
+
+@code {
+    private List<StudentDto>? _students;
+    private bool _loading;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStudents();
+    }
+
+    private async Task LoadStudents()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _students = await Api.GetStudentsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not load students: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

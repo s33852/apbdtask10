@@ -1,0 +1,237 @@
+@page "/students/{Id:int}"
+@rendermode InteractiveServer
+@inject StudentsApiClient Api
+@inject ObservedStudentsState ObservedState
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>@(_student?.FullName ?? "Student Details")</PageTitle>
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="students">Students</a></li>
+        <li class="breadcrumb-item active">@(_student?.FullName ?? $"#{Id}")</li>
+    </ol>
+</nav>
+
+<LoadingPanel IsLoading="@_loading" Message="Loading student details..." />
+<ApiError Message="@_error" ShowRetryButton="true" OnRetry="LoadData" />
+
+@if (!_loading && _error is null && _student is not null)
+{
+    <ErrorBoundary>
+        <ChildContent>
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">@_student.FullName</h4>
+                    <div>
+                        <button class="btn btn-sm @(ObservedState.IsObserved(_student.Id) ? "btn-warning" : "btn-outline-secondary") me-2"
+                                @onclick="ToggleObserved">
+                            @(ObservedState.IsObserved(_student.Id) ? "Unobserve" : "Observe")
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="CopyEmail" title="Copy email">
+                            <i class="bi bi-clipboard"></i> Copy Email
+                        </button>
+                        @if (_copyFeedback is not null)
+                        {
+                            <span class="ms-2 text-success small">@_copyFeedback</span>
+                        }
+                    </div>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-3">Index Number</dt>
+                        <dd class="col-sm-9">@_student.IndexNumber</dd>
+                        <dt class="col-sm-3">Email</dt>
+                        <dd class="col-sm-9">@_student.Email</dd>
+                        <dt class="col-sm-3">Semester</dt>
+                        <dd class="col-sm-9">@_student.Semester</dd>
+                    </dl>
+                </div>
+            </div>
+
+            <h5 class="mb-3">Enrolled Courses</h5>
+
+            <LoadingPanel IsLoading="@_loadingCourses" Message="Loading courses..." />
+
+            @if (!_loadingCourses)
+            {
+                <DataTable TItem="StudentCourseDto" Items="_studentCourses"
+                           EmptyMessage="No courses assigned yet.">
+                    <HeaderTemplate>
+                        <th>Course</th>
+                        <th>ECTS</th>
+                        <th>Assigned At</th>
+                    </HeaderTemplate>
+                    <RowTemplate Context="sc">
+                        <td>@sc.CourseName</td>
+                        <td>@sc.Ects</td>
+                        <td>@sc.AssignedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                    </RowTemplate>
+                </DataTable>
+            }
+
+            <hr />
+
+            <h5 class="mb-3">Assign a Course</h5>
+
+            @if (_assignError is not null)
+            {
+                <ApiError Message="@_assignError" />
+            }
+            @if (_assignSuccess)
+            {
+                <div class="alert alert-success">Course assigned successfully!</div>
+            }
+
+            <EditForm Model="_assignRequest" OnValidSubmit="AssignCourse" FormName="assign-course">
+                <DataAnnotationsValidator />
+                <div class="row g-2 align-items-end">
+                    <div class="col-auto">
+                        <label class="form-label" for="courseSelect">Select Course</label>
+                        <InputSelect id="courseSelect" class="form-select" @bind-Value="_assignRequest.CourseId">
+                            <option value="0">-- choose a course --</option>
+                            @foreach (var c in _availableCourses)
+                            {
+                                <option value="@c.Id">@c.Name (@c.Ects ECTS)</option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="() => _assignRequest.CourseId" class="text-danger small" />
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-success" disabled="@_assigning">
+                            @(_assigning ? "Assigning..." : "Assign")
+                        </button>
+                    </div>
+                </div>
+            </EditForm>
+        </ChildContent>
+        <ErrorContent Context="ex">
+            <ApiError Message="@($"An unexpected error occurred: {ex.Message}")" />
+        </ErrorContent>
+    </ErrorBoundary>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private StudentDto? _student;
+    private List<StudentCourseDto>? _studentCourses;
+    private List<CourseDto> _availableCourses = new();
+    private bool _loading;
+    private bool _loadingCourses;
+    private bool _assigning;
+    private string? _error;
+    private string? _assignError;
+    private bool _assignSuccess;
+    private string? _copyFeedback;
+    private AssignCourseRequest _assignRequest = new();
+
+    private IJSObjectReference? _jsModule;
+
+    // Called every time the Id route parameter changes.
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadData();
+    }
+
+    // Called once after first render — safe place to load JS module.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/interop.js");
+        }
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _error = null;
+        _assignSuccess = false;
+        try
+        {
+            _student = await Api.GetStudentAsync(Id);
+            if (_student is null)
+            {
+                _error = $"Student #{Id} was not found.";
+                return;
+            }
+            await Task.WhenAll(LoadCourses(), LoadAllCourses());
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not load student details: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadCourses()
+    {
+        _loadingCourses = true;
+        try
+        {
+            _studentCourses = await Api.GetStudentCoursesAsync(Id);
+        }
+        finally
+        {
+            _loadingCourses = false;
+        }
+    }
+
+    private async Task LoadAllCourses()
+    {
+        _availableCourses = await Api.GetCoursesAsync();
+    }
+
+    private void ToggleObserved()
+    {
+        if (_student is not null) ObservedState.Toggle(_student);
+    }
+
+    private async Task CopyEmail()
+    {
+        if (_jsModule is null || _student is null) return;
+        var ok = await _jsModule.InvokeAsync<bool>("copyToClipboard", _student.Email);
+        _copyFeedback = ok ? "Copied!" : "Copy failed.";
+        StateHasChanged();
+        await Task.Delay(2000);
+        _copyFeedback = null;
+        StateHasChanged();
+    }
+
+    private async Task AssignCourse()
+    {
+        _assigning = true;
+        _assignError = null;
+        _assignSuccess = false;
+        try
+        {
+            await Api.AssignCourseAsync(Id, _assignRequest);
+            _assignSuccess = true;
+            _assignRequest = new AssignCourseRequest();
+            await LoadCourses();
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Conflict)
+        {
+            _assignError = "This course is already assigned to the student.";
+        }
+        catch (Exception ex)
+        {
+            _assignError = $"Could not assign course: {ex.Message}";
+        }
+        finally
+        {
+            _assigning = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_jsModule is not null)
+            await _jsModule.DisposeAsync();
+    }
+}

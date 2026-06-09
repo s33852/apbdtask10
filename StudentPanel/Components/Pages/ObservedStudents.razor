@@ -1,0 +1,75 @@
+@page "/observed"
+@rendermode InteractiveServer
+@inject ObservedStudentsState ObservedState
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>Observed Students</PageTitle>
+
+<h1 class="mb-4">Observed Students</h1>
+
+@if (!ObservedState.Observed.Any())
+{
+    <div class="alert alert-info">
+        No students are being observed. Go to the <a href="students">students list</a> and mark some as observed.
+    </div>
+}
+else
+{
+    <ErrorBoundary>
+        <ChildContent>
+            <DataTable TItem="StudentDto" Items="ObservedState.Observed"
+                       EmptyMessage="No observed students.">
+                <HeaderTemplate>
+                    <th>Index</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Semester</th>
+                    <th>Actions</th>
+                </HeaderTemplate>
+                <RowTemplate Context="student">
+                    <td>@student.IndexNumber</td>
+                    <td>@student.FullName</td>
+                    <td>@student.Email</td>
+                    <td>Semester @student.Semester</td>
+                    <td>
+                        <a href="students/@student.Id" class="btn btn-sm btn-outline-primary me-1">Details</a>
+                        <button class="btn btn-sm btn-danger" @onclick="() => ConfirmRemove(student)">
+                            Remove
+                        </button>
+                    </td>
+                </RowTemplate>
+            </DataTable>
+        </ChildContent>
+        <ErrorContent Context="ex">
+            <ApiError Message="@($"Rendering error: {ex.Message}")" />
+        </ErrorContent>
+    </ErrorBoundary>
+}
+
+@code {
+    private IJSObjectReference? _jsModule;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/interop.js");
+        }
+    }
+
+    private async Task ConfirmRemove(StudentDto student)
+    {
+        if (_jsModule is null) return;
+        var confirmed = await _jsModule.InvokeAsync<bool>("confirmDialog",
+            $"Remove {student.FullName} from observed students?");
+        if (confirmed)
+            ObservedState.Remove(student.Id);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_jsModule is not null)
+            await _jsModule.DisposeAsync();
+    }
+}

@@ -1,0 +1,94 @@
+@page "/students/create"
+@rendermode InteractiveServer
+@inject StudentsApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Add New Student</PageTitle>
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="students">Students</a></li>
+        <li class="breadcrumb-item active">Add New Student</li>
+    </ol>
+</nav>
+
+<h1 class="mb-4">Add New Student</h1>
+
+@if (_apiError is not null)
+{
+    <ApiError Message="@_apiError" />
+}
+
+<div class="card shadow-sm" style="max-width: 520px;">
+    <div class="card-body">
+        <EditForm Model="_model" OnValidSubmit="HandleSubmit" FormName="create-student">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="alert alert-danger" />
+
+            <div class="mb-3">
+                <label class="form-label" for="indexNumber">Index Number <span class="text-danger">*</span></label>
+                <InputText id="indexNumber" class="form-control" @bind-Value="_model.IndexNumber" placeholder="e.g. s12345" />
+                <ValidationMessage For="() => _model.IndexNumber" class="text-danger small" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="firstName">First Name <span class="text-danger">*</span></label>
+                <InputText id="firstName" class="form-control" @bind-Value="_model.FirstName" />
+                <ValidationMessage For="() => _model.FirstName" class="text-danger small" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="lastName">Last Name <span class="text-danger">*</span></label>
+                <InputText id="lastName" class="form-control" @bind-Value="_model.LastName" />
+                <ValidationMessage For="() => _model.LastName" class="text-danger small" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="email">Email <span class="text-danger">*</span></label>
+                <InputText id="email" class="form-control" @bind-Value="_model.Email" type="email" />
+                <ValidationMessage For="() => _model.Email" class="text-danger small" />
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label" for="semester">Semester (1–8) <span class="text-danger">*</span></label>
+                <InputNumber id="semester" class="form-control" @bind-Value="_model.Semester" min="1" max="8" />
+                <ValidationMessage For="() => _model.Semester" class="text-danger small" />
+            </div>
+
+            <button type="submit" class="btn btn-primary" disabled="@_submitting">
+                @(_submitting ? "Saving..." : "Create Student")
+            </button>
+            <a href="students" class="btn btn-outline-secondary ms-2">Cancel</a>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private CreateStudentRequest _model = new();
+    private bool _submitting;
+    private string? _apiError;
+
+    private async Task HandleSubmit()
+    {
+        _submitting = true;
+        _apiError = null;
+        try
+        {
+            var created = await Api.CreateStudentAsync(_model);
+            // Redirect to the new student's details page after creation.
+            Nav.NavigateTo($"/students/{created.Id}");
+        }
+        catch (HttpRequestException ex)
+        {
+            _apiError = $"Could not create student: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            _apiError = $"Unexpected error: {ex.Message}";
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+}
